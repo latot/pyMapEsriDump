@@ -84,7 +84,7 @@ class Arcgis:
     def read_Map(self, link, path):
         data = request2json(self.link_generator(link, {'f':'json'}))
         dumpjson(os.path.join(path, "data.json"), data)
-        pickle.dump(link, open(os.path.join(path, "map.service"), "wb"))
+        pickle.dump(link, open(os.path.join(path, "map.service"), "w"))
         for layer in data['layers']:
                 upath = "{}/{}".format(link, layer['id'])
                 dpath = url2path(upath)
