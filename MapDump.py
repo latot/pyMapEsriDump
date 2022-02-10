@@ -93,14 +93,19 @@ class Arcgis:
     def read_Layer(self, link, path, maplink, layer):
         data = request2json(self.link_generator(link, {'f':'json'}))
         dumpjson(os.path.join(self.path, path, "data.json"), data)
-        tmp = open("tmp.geojson", "w")
+        tmp_file = os.path.join(self.path, path, "tmp.geojson")
+        tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
         for feature in EsriDumper("{}/{}".format(self.url, link), proxy=self.proxy):
             tmp.write(json.dumps(feature))
+            tmp.write(",")
+        tmp.seek(tmp.tell()-1)
+        tmp.truncate()
         tmp.write(']}')
-        geo = geopandas.read_file("tmp.geojson")
-        geo.to_file("{}.shp".format(layer))
-        os.remove("tmp.geojson")
+        tmp.close()
+        geo = geopandas.read_file(tmp_file)
+        geo.to_file(os.path.join(self.path, path, "{}.shp".format(layer)))
+        os.remove(tmp_file)
 
 if __name__ == "__main__":
     import argparse
