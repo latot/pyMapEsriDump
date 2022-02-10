@@ -4,6 +4,7 @@ import time
 import pickle
 import requests
 import json
+import geopandas
 
 from esridump.dumper import EsriDumper
 
@@ -12,7 +13,9 @@ def dumpjson(ifile, data):
         json.dump(data, f)
 
 def request2json(url, itry = 3):
+    #print(url)
     ret = requests.get(url)
+    #print(ret.content)
     if ret.status_code == 200:
         data = json.loads(ret.content.decode("utf-8"))
         #if ('error' in data) and len(data.keys()) == 1:
@@ -49,12 +52,12 @@ class Arcgis:
         #and params is the GET/Post parameters we want to send
         #The link need to start in the "server"
         if proxy is None:
-            self.link_generator = lambda url, params: "{}/{}?".format(self.url, url, params2html(params))
+            self.link_generator = lambda iurl, iparams: "{}/{}?{}".format(self.url, iurl, params2html(iparams))
         else:
-            self.link_generator = lambda url, params: use_proxy(self.proxy, "{}/{}".format(self.url, url), params)
+            self.link_generator = lambda iurl, iparams: use_proxy(self.proxy, "{}/{}".format(self.url, iurl), iparams)
         self.proxy = proxy
         if url[-1] == "/":
-            url = [:-1]
+            url = url[:-1]
         self.url = url
         self.path = path
         if os.path.exists(path):
@@ -88,9 +91,23 @@ class Arcgis:
                 os.makedirs(url2path(link, spaths=[self.path], epaths=[str(layer['id'])]))
                 self.read_Layer(upath, dpath, link, layer['id'])
     def read_Layer(self, link, path, maplink, layer):
-        #data = request2json(self.link_generator(link, {'f':'json'}))
-        print(link)
-        #dumpjson(os.path.join(self.path, path, "data.json"), data)
+        data = request2json(self.link_generator(link, {'f':'json'}))
+        dumpjson(os.path.join(self.path, path, "data.json"), data)
+        tmp = open("tmp.geojson", "w")
+        tmp.write('{"type":"FeatureCollection","features":[')
+        for feature in EsriDumper("{}/{}".format(self.url, link), proxy=self.proxy):
+            tmp.write(json.dumps(feature))
+        tmp.write(']}')
+        geo = geopandas.read_file("tmp.geojson")
+        geo.to_file("{}.shp".format(layer))
+        os.remove("tmp.geojson")
 
-#def __name__ == "__main__":
-#    pass
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description = 'Dump Map Server')
+    parser.add_argument('url', help='url map server')
+    parser.add_argument('folder', help='output folder')
+    parser.add_argument('--proxy', nargs="?", help='proxy url')
+    args = parser.parse_args()
+    full = Arcgis(args.url, args.folder, args.proxy)
+    full.dumpjson()
