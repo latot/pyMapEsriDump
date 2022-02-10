@@ -91,21 +91,29 @@ class Arcgis:
                 os.makedirs(url2path(link, spaths=[self.path], epaths=[str(layer['id'])]))
                 self.read_Layer(upath, dpath, link, layer['id'])
     def read_Layer(self, link, path, maplink, layer):
+        print("Requesting:")
+        print("{}/{}".format(self.url, link))
         data = request2json(self.link_generator(link, {'f':'json'}))
         dumpjson(os.path.join(self.path, path, "data.json"), data)
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
         tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
-        for feature in EsriDumper("{}/{}".format(self.url, link), proxy=self.proxy):
-            tmp.write(json.dumps(feature))
-            tmp.write(",")
-        tmp.seek(tmp.tell()-1)
-        tmp.truncate()
-        tmp.write(']}')
-        tmp.close()
-        geo = geopandas.read_file(tmp_file)
-        geo.to_file(os.path.join(self.path, path, "{}.shp".format(layer)))
-        os.remove(tmp_file)
+        try:
+            for feature in EsriDumper("{}/{}".format(self.url, link), proxy=self.proxy):
+                tmp.write(json.dumps(feature))
+                tmp.write(",")
+            tmp.seek(tmp.tell()-1)
+            tmp.truncate()
+            tmp.write(']}')
+            tmp.close()
+            geo = geopandas.read_file(tmp_file)
+            geo.to_file(os.path.join(self.path, path, "{}.shp".format(layer)))
+            os.remove(tmp_file)
+        except Exception as e:
+            tmp.close()
+            os.remove(tmp_file)
+            print(e)
+
 
 if __name__ == "__main__":
     import argparse
