@@ -32,14 +32,30 @@ def url2path(url, spaths=[], epaths=[]):
     url = url.split("/")
     return os.path.join(*spaths, *url, *epaths)
 
+def params2html(params):
+    data = ""
+    for i in params:
+        data += i + "=" + requests.utils.quote(params[i]) + "&"
+    return data
+
+def use_proxy(proxy, url, params):
+    return "{}{}".format(proxy, requests.utils.quote("{}?{}".format(url, params2html(params))))
+
 class Arcgis:
-    def __init__(self, link_generator, path):
+    def __init__(self, url, path, proxy = None):
         #linkgenerator(link, params)
         #some access to arcgis use custom ways to contruct the links
         #so, the link param is the link to the server
         #and params is the GET/Post parameters we want to send
         #The link need to start in the "server"
-        self.link_generator = link_generator
+        if proxy is None:
+            self.link_generator = lambda url, params: "{}/{}?".format(self.url, url, params2html(params))
+        else:
+            self.link_generator = lambda url, params: use_proxy(self.proxy, "{}/{}".format(self.url, url), params)
+        self.proxy = proxy
+        if url[-1] == "/":
+            url = [:-1]
+        self.url = url
         self.path = path
         if os.path.exists(path):
             shutil.rmtree(path)
