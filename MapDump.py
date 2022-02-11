@@ -8,6 +8,8 @@ import geopandas
 
 from esridump.dumper import EsriDumper
 
+#About wkid or latestwkid, for now, lets use wkid, I'll suppose it recovers the orginal coords
+
 def dumpjson(ifile, data):
     with open(ifile, 'w') as f:
         json.dump(data, f)
@@ -94,12 +96,15 @@ class Arcgis:
         print("Requesting:")
         print("{}/{}".format(self.url, link))
         data = request2json(self.link_generator(link, {'f':'json'}))
+        wkid = data['sourceSpatialReference']['wkid']
         dumpjson(os.path.join(self.path, path, "data.json"), data)
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
         tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
         try:
-            for feature in EsriDumper("{}/{}".format(self.url, link), proxy=self.proxy):
+            for feature in EsriDumper("{}/{}".format(self.url, link),
+                                        proxy=self.proxy,
+                                        outSR=wkid):
                 tmp.write(json.dumps(feature))
                 tmp.write(",")
             tmp.seek(tmp.tell()-1)
@@ -107,6 +112,7 @@ class Arcgis:
             tmp.write(']}')
             tmp.close()
             geo = geopandas.read_file(tmp_file)
+            geo.set_crs("epsg:{}".format(wkid))
             geo.to_file(os.path.join(self.path, path, "{}.shp".format(layer)))
             os.remove(tmp_file)
         except Exception as e:
