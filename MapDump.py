@@ -104,7 +104,7 @@ class Arcgis:
         tmp.write('{"type":"FeatureCollection","features":[')
         try:
             for feature in EsriDumper("{}/{}".format(self.url, link),
-                                        proxy=self.proxy
+                                        proxy=self.proxy,
                                         outSR=wkid):
                 tmp.write(json.dumps(feature))
                 tmp.write(",")
