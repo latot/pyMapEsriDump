@@ -86,7 +86,8 @@ class Arcgis:
     def read_Map(self, link, path):
         data = request2json(self.link_generator(link, {'f':'json'}))
         dumpjson(os.path.join(path, "data.json"), data)
-        pickle.dump(link, open(os.path.join(path, "map.service"), "w"))
+        with open(os.path.join(path, "map.service"), "w") as url:
+            url.write(link)
         for layer in data['layers']:
                 upath = "{}/{}".format(link, layer['id'])
                 dpath = url2path(upath)
@@ -103,7 +104,7 @@ class Arcgis:
         tmp.write('{"type":"FeatureCollection","features":[')
         try:
             for feature in EsriDumper("{}/{}".format(self.url, link),
-                                        proxy=self.proxy,
+                                        proxy=self.proxy
                                         outSR=wkid):
                 tmp.write(json.dumps(feature))
                 tmp.write(",")
@@ -112,7 +113,7 @@ class Arcgis:
             tmp.write(']}')
             tmp.close()
             geo = geopandas.read_file(tmp_file)
-            geo.set_crs("epsg:{}".format(wkid))
+            geo.set_crs(wkid, allow_override=True, inplace=True)
             geo.to_file(os.path.join(self.path, path, "{}.shp".format(layer)))
             os.remove(tmp_file)
         except Exception as e:
