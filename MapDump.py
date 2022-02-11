@@ -134,7 +134,6 @@ class Arcgis:
             os.remove(tmp_file)
             print(e)
 
-
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description = 'Dump Map Server')
