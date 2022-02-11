@@ -97,8 +97,13 @@ class Arcgis:
         print("Requesting:")
         print("{}/{}".format(self.url, link))
         data = request2json(self.link_generator(link, {'f':'json'}))
-        wkid = data['sourceSpatialReference']['wkid']
+        if 'error' in data:
+            print("No se pudo obtner esta capa")
+            print(data)
+            return
         dumpjson(os.path.join(self.path, path, "data.json"), data)
+        print(data)
+        wkid = data['sourceSpatialReference']['wkid']
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
         tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
