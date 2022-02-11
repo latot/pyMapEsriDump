@@ -92,8 +92,8 @@ class Arcgis:
                 upath = "{}/{}".format(link, layer['id'])
                 dpath = url2path(upath)
                 os.makedirs(url2path(link, spaths=[self.path], epaths=[str(layer['id'])]))
-                self.read_Layer(upath, dpath, link, layer['id'])
-    def read_Layer(self, link, path, maplink, layer):
+                self.read_Layer(upath, dpath, link, layer['id'], data)
+    def read_Layer(self, link, path, maplink, layer, mapdata):
         print("Requesting:")
         print("{}/{}".format(self.url, link))
         data = request2json(self.link_generator(link, {'f':'json'}))
@@ -101,9 +101,17 @@ class Arcgis:
             print("No se pudo obtner esta capa")
             print(data)
             return
+        wkid = None
+        wkid_txt = 'wkid'
+        if 'sourceSpatialReference' in data:
+            wkid = data['sourceSpatialReference'][wkid_txt]
+        else:
+            if 'spatialReference' in mapdata:
+                wkid = mapdata['spatialReference'][wkid_txt]
+            else:
+                print("No se pudo recuperar el wkid")
+                return
         dumpjson(os.path.join(self.path, path, "data.json"), data)
-        print(data)
-        wkid = data['sourceSpatialReference']['wkid']
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
         tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
