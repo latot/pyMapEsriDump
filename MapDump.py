@@ -12,7 +12,7 @@ from esridump.dumper import EsriDumper
 
 def dumpjson(ifile, data):
     with open(ifile, 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=4, sort_keys=True)
 
 def request2json(url, itry = 3):
     #print(url)
@@ -74,11 +74,13 @@ class Arcgis:
             self.read_folder(data['folders'])
     def read_services(self, services):
         for i in range(len(services)):
-            if services[i]["type"] == "MapServer":
-                upath = services[i]["name"] + "/MapServer"
+            if services[i]["type"] == "MapServer" or services[i]["type"] == "FeatureServer":
+                upath = services[i]["name"] + "/" + services[i]["type"]
                 dpath = url2path(upath, spaths=[self.path])
                 os.makedirs(dpath)
                 self.read_Map(upath, dpath)
+            else:
+                print("Unsupported service type: {}".format(services[i]["type"]))
     def read_folder(self, folders):
         for i in folders:
             os.makedirs(os.path.join(self.path, i))
@@ -119,7 +121,7 @@ class Arcgis:
             for feature in EsriDumper("{}/{}".format(self.url, link),
                                         proxy=self.proxy,
                                         outSR=wkid):
-                tmp.write(json.dumps(feature))
+                tmp.write(json.dumps(feature, indent=4))
                 tmp.write(",")
             tmp.seek(tmp.tell()-1)
             tmp.truncate()
