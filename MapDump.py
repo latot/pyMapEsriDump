@@ -129,7 +129,7 @@ class Arcgis:
             tmp.close()
             geo = geopandas.read_file(tmp_file)
             geo.set_crs(wkid, allow_override=True, inplace=True)
-            geo.to_file(os.path.join(self.path, path, "{}.shp".format(layer)))
+            geo.to_file(os.path.join(self.path, path, "{}.gpkg".format(layer)))
             os.remove(tmp_file)
         except Exception as e:
             tmp.close()
