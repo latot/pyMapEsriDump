@@ -8,6 +8,18 @@ import geopandas
 
 from esridump.dumper import EsriDumper
 
+#requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS += 'HIGH:!DH:!aNULL'
+#There is a lot of problems with SSL and the severs, we want to scrap them anyway
+import urllib3
+
+requests.packages.urllib3.disable_warnings()
+requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS += ':HIGH:!DH:!aNULL'
+try:
+    requests.packages.urllib3.contrib.pyopenssl.util.ssl_.DEFAULT_CIPHERS += ':HIGH:!DH:!aNULL'
+except AttributeError:
+    # no pyopenssl support used / needed / available
+    pass
+
 #About wkid or latestwkid, for now, lets use wkid, I'll suppose it recovers the orginal coords
 
 def dumpjson(ifile, data):
@@ -16,7 +28,8 @@ def dumpjson(ifile, data):
 
 def request2json(url, itry = 3):
     #print(url)
-    ret = requests.get(url)
+    ret = requests.get(url, verify=False)
+    #ret = requests.get(url)
     #print(ret.content)
     if ret.status_code == 200:
         data = json.loads(ret.content.decode("utf-8"))
@@ -46,8 +59,11 @@ def params2html(params):
 def use_proxy(proxy, url, params):
     return "{}{}".format(proxy, requests.utils.quote("{}?{}".format(url, params2html(params))))
 
+def DumpArcgis(url, path, proxy):
+    pass
+
 class Arcgis:
-    def __init__(self, url, path, proxy = None):
+    def __init__(self, url, path, proxy = None, timeout = 30):
         #linkgenerator(link, params)
         #some access to arcgis use custom ways to contruct the links
         #so, the link param is the link to the server
@@ -62,6 +78,7 @@ class Arcgis:
             url = url[:-1]
         self.url = url
         self.path = path
+        self.timeout = timeout
         if os.path.exists(path):
             shutil.rmtree(path)
         os.makedirs(path)
@@ -118,9 +135,15 @@ class Arcgis:
         tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
         try:
-            for feature in EsriDumper("{}/{}".format(self.url, link),
+            iterator = EsriDumper("{}/{}".format(self.url, link),
                                         proxy=self.proxy,
-                                        outSR=wkid):
+                                        outSR=wkid,
+                                        timeout=self.timeout)
+            if iterator == None:
+                print("This is a layer constructed with other ones")
+                print(link)
+                return
+            for feature in iterator:
                 tmp.write(json.dumps(feature, indent=4))
                 tmp.write(",")
             tmp.seek(tmp.tell()-1)
@@ -142,6 +165,10 @@ if __name__ == "__main__":
     parser.add_argument('url', help='url map server')
     parser.add_argument('folder', help='output folder')
     parser.add_argument('--proxy', nargs="?", help='proxy url')
+    parser.add_argument('--timeout', nargs="?", default=30, help='Timeout to get response from the server in seconds')
+    parser.add_argument('--start_folder', nargs="?", default="", help='From what folder start reading')
     args = parser.parse_args()
-    full = Arcgis(args.url, args.folder, args.proxy)
-    full.dumpjson()
+    full = Arcgis(args.url, args.folder, args.proxy, timeout=int(args.timeout))
+    if args.start_folder != "":
+        os.makedirs(os.path.join(args.folder, *args.start_folder.split("/")))
+    full.dumpjson(args.start_folder)
