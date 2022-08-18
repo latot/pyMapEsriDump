@@ -32,7 +32,7 @@ Lets pick as example the shp files, they don't allow some symbols, or have a siz
 To can use this project, sadly for now is just copy/paste the script, or clone it:
 
 ```
-https://github.com/latot/pyMapEsriDump
+git clone https://github.com/latot/pyMapEsriDump
 ```
 
 ## How to use
@@ -53,8 +53,12 @@ optional arguments:
   --proxy [PROXY]       proxy url
   --timeout [TIMEOUT]   Timeout to get response from the server in seconds
   --start_folder [START_FOLDER]
-                        From what folder start reading
+                        From what server folder start reading
 ```
+
+The script is not perfect, and very..., ugly internally, but for now works...
+
+What is not supported? Download directly a map the ```start_folder```, you only can choose a map of the server to download a section.
 
 ## About Arcgis Server
 
