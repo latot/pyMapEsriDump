@@ -13,12 +13,38 @@ from esridump.dumper import EsriDumper
 import urllib3
 
 requests.packages.urllib3.disable_warnings()
-requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS += ':HIGH:!DH:!aNULL'
-try:
-    requests.packages.urllib3.contrib.pyopenssl.util.ssl_.DEFAULT_CIPHERS += ':HIGH:!DH:!aNULL'
-except AttributeError:
-    # no pyopenssl support used / needed / available
-    pass
+#requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS += ':HIGH:!DH:!aNULL'
+#try:
+#    requests.packages.urllib3.contrib.pyopenssl.util.ssl_.DEFAULT_CIPHERS += ':HIGH:!DH:!aNULL'
+#except AttributeError:
+#    # no pyopenssl support used / needed / available
+#    pass
+
+#Due to some upgrades on urllib2 now SSL1 and SSL2 are disabled, so we can't fix with above solution
+import urllib.parse 
+from urllib3.util import create_urllib3_context
+from urllib3 import PoolManager
+from requests.adapters import HTTPAdapter
+from requests import Session
+
+class AddedCipherAdapter(HTTPAdapter):
+  def init_poolmanager(self, conntections, maxsize, block=False):
+    ctx = create_urllib3_context(ciphers=":HIGH:!DH:!aNULL")
+    ctx.check_hostname = False
+    self.poolmanager = PoolManager(
+      #num_pools=connections,
+      #maxsize=maxsize,
+      #block=block,
+      ssl_context=ctx,
+    )
+
+def unsafe_req(url):
+    s = Session()
+    parse = urllib.parse.urlparse(url)
+    s.mount("{scheme}://{netloc}".format(scheme = parse.scheme, netloc = parse.netloc), AddedCipherAdapter())
+    ret = s.get(url, verify = False)
+    s.close()
+    return ret
 
 #About wkid or latestwkid, for now, lets use wkid, I'll suppose it recovers the orginal coords
 
@@ -28,7 +54,8 @@ def dumpjson(ifile, data):
 
 def request2json(url, itry = 3):
     #print(url)
-    ret = requests.get(url, verify=False)
+    ret = unsafe_req(url)
+    #ret = requests.get(url, verify=False)
     #ret = requests.get(url)
     #print(ret.content)
     if ret.status_code == 200:
@@ -39,7 +66,10 @@ def request2json(url, itry = 3):
         #    #Check this later
         #    raise ErrorPerformingOp
         return data
-    elif (ret.status_code == 500) and (itry > 0):
+    elif (
+          (ret.status_code == 500) or
+          (ret.status_code == 403)
+         ) and (itry > 0):
         time.sleep(5)
         return request2json(url, itry=(itry-1))
     else:
@@ -63,7 +93,7 @@ def DumpArcgis(url, path, proxy):
     pass
 
 class Arcgis:
-    def __init__(self, url, path, proxy = None, timeout = 30):
+    def __init__(self, url, path, proxy = None, timeout = 30, catalog = True):
         #linkgenerator(link, params)
         #some access to arcgis use custom ways to contruct the links
         #so, the link param is the link to the server
@@ -79,11 +109,16 @@ class Arcgis:
         self.url = url
         self.path = path
         self.timeout = timeout
+        self.catalog = catalog
         if os.path.exists(path):
             shutil.rmtree(path)
         os.makedirs(path)
     def dumpjson(self, start = ""):
+        #try:
         data = request2json(self.link_generator(start, {'f': 'json'}))
+        #except:
+        #  print("Fail dumpjson!")
+        #  return
         dumpjson(url2path(start, [self.path], ["data.json"]), data)
         if 'services' in data:
             self.read_services(data['services'])
@@ -103,10 +138,17 @@ class Arcgis:
             os.makedirs(os.path.join(self.path, i))
             self.dumpjson(i)
     def read_Map(self, link, path):
-        data = request2json(self.link_generator(link, {'f':'json'}))
+        try:
+          data = request2json(self.link_generator(link, {'f':'json'}))
+        except:
+          print("Not able to get map data!")
+          return
         dumpjson(os.path.join(path, "data.json"), data)
         with open(os.path.join(path, "map.service"), "w") as url:
             url.write(link)
+        if 'layers' not in data:
+          print("No Layers accesable from here! check the map!")
+          return
         for layer in data['layers']:
                 upath = "{}/{}".format(link, layer['id'])
                 dpath = url2path(upath)
@@ -115,22 +157,37 @@ class Arcgis:
     def read_Layer(self, link, path, maplink, layer, mapdata):
         print("Requesting:")
         print("{}/{}".format(self.url, link))
-        data = request2json(self.link_generator(link, {'f':'json'}))
+        try:
+          data = request2json(self.link_generator(link, {'f':'json'}))
+        except:
+          print("Error downloading the data!")
+          return
         if 'error' in data:
             print("No se pudo obtner esta capa")
             print(data)
             return
+        dumpjson(os.path.join(self.path, path, "data.json"), data)
+        dumpjson(os.path.join(self.path, path, "layer.url"), {
+          'url': "{}/{}".format(self.url, link),
+          'proxy': self.proxy
+        })
         wkid = None
         wkid_txt = 'wkid'
         if 'sourceSpatialReference' in data:
+            if wkid_txt not in data['sourceSpatialReference']:
+              print("can't read wkid!")
+              return
             wkid = data['sourceSpatialReference'][wkid_txt]
         else:
             if 'spatialReference' in mapdata:
+                if wkid_txt not in mapdata['spatialReference']:
+                  print("can't read wkid!")
+                  return
                 wkid = mapdata['spatialReference'][wkid_txt]
             else:
                 print("No se pudo recuperar el wkid")
                 return
-        dumpjson(os.path.join(self.path, path, "data.json"), data)
+        if self.catalog: return
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
         tmp = open(tmp_file, "w")
         tmp.write('{"type":"FeatureCollection","features":[')
@@ -167,8 +224,9 @@ if __name__ == "__main__":
     parser.add_argument('--proxy', nargs="?", help='proxy url')
     parser.add_argument('--timeout', nargs="?", default=30, help='Timeout to get response from the server in seconds')
     parser.add_argument('--start_folder', nargs="?", default="", help='From what folder start reading')
+    parser.add_argument('--catagol', action='store_true', help='We will only download map structures and info, not the map it self, good to know what can be inside')
     args = parser.parse_args()
-    full = Arcgis(args.url, args.folder, args.proxy, timeout=int(args.timeout))
+    full = Arcgis(args.url, args.folder, args.proxy, timeout=int(args.timeout), catalog=parser.catalog)
     if args.start_folder != "":
         os.makedirs(os.path.join(args.folder, *args.start_folder.split("/")))
     full.dumpjson(args.start_folder)
