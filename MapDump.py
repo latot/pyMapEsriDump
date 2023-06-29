@@ -38,11 +38,11 @@ class AddedCipherAdapter(HTTPAdapter):
       ssl_context=ctx,
     )
 
-def unsafe_req(url):
+def unsafe_req(url, timeout):
     s = Session()
     parse = urllib.parse.urlparse(url)
     s.mount("{scheme}://{netloc}".format(scheme = parse.scheme, netloc = parse.netloc), AddedCipherAdapter())
-    ret = s.get(url, verify = False)
+    ret = s.get(url, verify = False, timeout = timeout)
     s.close()
     return ret
 
@@ -52,9 +52,9 @@ def dumpjson(ifile, data):
     with open(ifile, 'w') as f:
         json.dump(data, f, indent=4, sort_keys=True)
 
-def request2json(url, itry = 3):
+def request2json(url, itry = 3, timeout):
     #print(url)
-    ret = unsafe_req(url)
+    ret = unsafe_req(url, timeout = timeout)
     #ret = requests.get(url, verify=False)
     #ret = requests.get(url)
     #print(ret.content)
@@ -71,7 +71,7 @@ def request2json(url, itry = 3):
           (ret.status_code == 403)
          ) and (itry > 0):
         time.sleep(5)
-        return request2json(url, itry=(itry-1))
+        return request2json(url, itry=(itry-1), timeout = timeout)
     else:
         print(url, flush=True)
         ret.raise_for_status()
@@ -114,11 +114,11 @@ class Arcgis:
             shutil.rmtree(path)
         os.makedirs(path)
     def dumpjson(self, start = ""):
-        #try:
-        data = request2json(self.link_generator(start, {'f': 'json'}))
-        #except:
-        #  print("Fail dumpjson!")
-        #  return
+        try:
+            data = request2json(self.link_generator(start, {'f': 'json'}), timeout = self.timeout)
+        except:
+          print("Fail dumpjson!")
+          return
         dumpjson(url2path(start, [self.path], ["data.json"]), data)
         if 'services' in data:
             self.read_services(data['services'])
@@ -139,7 +139,7 @@ class Arcgis:
             self.dumpjson(i)
     def read_Map(self, link, path):
         try:
-          data = request2json(self.link_generator(link, {'f':'json'}))
+          data = request2json(self.link_generator(link, {'f':'json'}), timeout = self.timeout)
         except:
           print("Not able to get map data!")
           return
@@ -158,7 +158,7 @@ class Arcgis:
         print("Requesting:")
         print("{}/{}".format(self.url, link))
         try:
-          data = request2json(self.link_generator(link, {'f':'json'}))
+          data = request2json(self.link_generator(link, {'f':'json'}), timeout = self.timeout)
         except:
           print("Error downloading the data!")
           return
@@ -224,9 +224,9 @@ if __name__ == "__main__":
     parser.add_argument('--proxy', nargs="?", help='proxy url')
     parser.add_argument('--timeout', nargs="?", default=30, help='Timeout to get response from the server in seconds')
     parser.add_argument('--start_folder', nargs="?", default="", help='From what folder start reading')
-    parser.add_argument('--catagol', action='store_true', help='We will only download map structures and info, not the map it self, good to know what can be inside')
+    parser.add_argument('--catalog', action='store_true', help='We will only download map structures and info, not the map it self, good to know what can be inside')
     args = parser.parse_args()
-    full = Arcgis(args.url, args.folder, args.proxy, timeout=int(args.timeout), catalog=parser.catalog)
+    full = Arcgis(args.url, args.folder, args.proxy, timeout=int(args.timeout), catalog=args.catalog)
     if args.start_folder != "":
         os.makedirs(os.path.join(args.folder, *args.start_folder.split("/")))
     full.dumpjson(args.start_folder)
