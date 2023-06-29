@@ -38,7 +38,7 @@ class AddedCipherAdapter(HTTPAdapter):
       ssl_context=ctx,
     )
 
-def unsafe_req(url, timeout):
+def unsafe_req(url, timeout = 30):
     s = Session()
     parse = urllib.parse.urlparse(url)
     s.mount("{scheme}://{netloc}".format(scheme = parse.scheme, netloc = parse.netloc), AddedCipherAdapter())
@@ -52,7 +52,7 @@ def dumpjson(ifile, data):
     with open(ifile, 'w') as f:
         json.dump(data, f, indent=4, sort_keys=True)
 
-def request2json(url, itry = 3, timeout):
+def request2json(url, itry = 3, timeout = 30):
     #print(url)
     ret = unsafe_req(url, timeout = timeout)
     #ret = requests.get(url, verify=False)
