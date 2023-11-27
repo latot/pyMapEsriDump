@@ -180,13 +180,10 @@ class Arcgis:
             wkid = data['sourceSpatialReference'][wkid_txt]
         else:
             if 'spatialReference' in mapdata:
-                if wkid_txt not in mapdata['spatialReference']:
-                  print("can't read wkid!")
-                  return
-                wkid = mapdata['spatialReference'][wkid_txt]
-            else:
-                print("No se pudo recuperar el wkid")
-                return
+                if wkid_txt in mapdata['spatialReference']:
+                    wkid = mapdata['spatialReference'][wkid_txt]
+        if wkid is None:
+            wkid = 4326
         if self.catalog: return
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
         tmp = open(tmp_file, "w")
