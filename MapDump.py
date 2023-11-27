@@ -92,8 +92,10 @@ def use_proxy(proxy, url, params):
 def DumpArcgis(url, path, proxy):
     pass
 
+from pathlib import Path
+
 class Arcgis:
-    def __init__(self, url, path, proxy = None, timeout = 30, catalog = True):
+    def __init__(self, url, path, proxy = None, timeout = 30, catalog = True, overwrite = False, paginate_oid = False):
         #linkgenerator(link, params)
         #some access to arcgis use custom ways to contruct the links
         #so, the link param is the link to the server
@@ -110,9 +112,11 @@ class Arcgis:
         self.path = path
         self.timeout = timeout
         self.catalog = catalog
-        if os.path.exists(path):
-            shutil.rmtree(path)
-        os.makedirs(path)
+        self.overwrite = overwrite
+        self.paginate_oid = paginate_oid
+        #if os.path.exists(path):
+        #    shutil.rmtree(path)
+        os.makedirs(path, exist_ok=True)
     def dumpjson(self, start = ""):
         try:
             data = request2json(self.link_generator(start, {'f': 'json'}), timeout = self.timeout)
@@ -129,13 +133,13 @@ class Arcgis:
             if services[i]["type"] == "MapServer" or services[i]["type"] == "FeatureServer":
                 upath = services[i]["name"] + "/" + services[i]["type"]
                 dpath = url2path(upath, spaths=[self.path])
-                os.makedirs(dpath)
+                os.makedirs(dpath, exist_ok=True)
                 self.read_Map(upath, dpath)
             else:
                 print("Unsupported service type: {}".format(services[i]["type"]))
     def read_folder(self, folders):
         for i in folders:
-            os.makedirs(os.path.join(self.path, i))
+            os.makedirs(os.path.join(self.path, i), exist_ok=True)
             self.dumpjson(i)
     def read_Map(self, link, path):
         try:
@@ -152,9 +156,13 @@ class Arcgis:
         for layer in data['layers']:
                 upath = "{}/{}".format(link, layer['id'])
                 dpath = url2path(upath)
-                os.makedirs(url2path(link, spaths=[self.path], epaths=[str(layer['id'])]))
+                os.makedirs(url2path(link, spaths=[self.path], epaths=[str(layer['id'])]), exist_ok=True)
                 self.read_Layer(upath, dpath, link, layer['id'], data)
     def read_Layer(self, link, path, maplink, layer, mapdata):
+        out_file = os.path.join(self.path, path, "{}.gpkg".format(layer))
+        #Virtual layers are the ones are composed by others, should not be downloaded
+        virtual_layer = os.path.join(self.path, path, "virtual_layer")
+        if (not self.overwrite) and (os.path.exists(virtual_layer) or os.path.exists(out_file)): return
         print("Requesting:")
         print("{}/{}".format(self.url, link))
         try:
@@ -186,32 +194,37 @@ class Arcgis:
             wkid = 4326
         if self.catalog: return
         tmp_file = os.path.join(self.path, path, "tmp.geojson")
-        tmp = open(tmp_file, "w")
-        tmp.write('{"type":"FeatureCollection","features":[')
         try:
-            iterator = EsriDumper("{}/{}".format(self.url, link),
-                                        proxy=self.proxy,
-                                        outSR=wkid,
-                                        timeout=self.timeout)
-            if iterator == None:
-                print("This is a layer constructed with other ones")
-                print(link)
-                return
-            for feature in iterator:
-                tmp.write(json.dumps(feature, indent=4))
-                tmp.write(",")
-            tmp.seek(tmp.tell()-1)
-            tmp.truncate()
-            tmp.write(']}')
-            tmp.close()
+            tmp = open(tmp_file, "w")
+            tmp.write('{"type":"FeatureCollection","features":[')
+            try:
+                iterator = EsriDumper("{}/{}".format(self.url, link),
+                                            proxy=self.proxy,
+                                            outSR=wkid,
+                                            timeout=self.timeout,
+                                            paginate_oid = self.paginate_oid)
+                for feature in iterator:
+                    tmp.write(json.dumps(feature, indent=4))
+                    tmp.write(",")
+                tmp.seek(tmp.tell()-1)
+                tmp.truncate()
+                tmp.write(']}')
+                tmp.close()
+            except TypeError as e:
+                tmp.close()
+                os.remove(tmp_file)
+                if e.args == ("'NoneType' object is not iterable",):
+                    print("This is a layer constructed with other ones")
+                    Path(virtual_layer).touch()
+                    return
+                raise(e)
             geo = geopandas.read_file(tmp_file)
             geo.set_crs(wkid, allow_override=True, inplace=True)
-            geo.to_file(os.path.join(self.path, path, "{}.gpkg".format(layer)))
+            geo.to_file(out_file)
             os.remove(tmp_file)
         except Exception as e:
-            tmp.close()
-            os.remove(tmp_file)
             print(e)
+            return
 
 if __name__ == "__main__":
     import argparse
@@ -222,8 +235,18 @@ if __name__ == "__main__":
     parser.add_argument('--timeout', nargs="?", default=30, help='Timeout to get response from the server in seconds')
     parser.add_argument('--start_folder', nargs="?", default="", help='From what folder start reading')
     parser.add_argument('--catalog', action='store_true', help='We will only download map structures and info, not the map it self, good to know what can be inside')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing file')
+    parser.add_argument('--paginate_oid', action='store_true', help='Use paginate_oid from Dumper to scrap')
     args = parser.parse_args()
-    full = Arcgis(args.url, args.folder, args.proxy, timeout=int(args.timeout), catalog=args.catalog)
+    full = Arcgis(
+        args.url,
+        args.folder,
+        args.proxy,
+        timeout=int(args.timeout),
+        catalog=args.catalog,
+        overwrite = args.overwrite,
+        paginate_oid = args.paginate_oid
+    )
     if args.start_folder != "":
-        os.makedirs(os.path.join(args.folder, *args.start_folder.split("/")))
+        os.makedirs(os.path.join(args.folder, *args.start_folder.split("/")), exist_ok=True)
     full.dumpjson(args.start_folder)
